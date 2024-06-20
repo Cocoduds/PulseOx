@@ -41,7 +41,7 @@ char filename[14];
 // Create a CSV file name in 8.3 format. I will encode a file sequence
 // number in the last three characters. For example: pulse000.csv
 char csv_filename[13] = "pulsexxx.csv";
-
+uint32_t index_next_filename;
 
 
 int timer;
@@ -79,6 +79,7 @@ void setup() {
  
   Serial.println("Configuring Sensor...."); 
   int error = bioHub.configBpm(MODE_TWO); 
+  Serial.println("here");
   if(error == 0){ 
     Serial.println("Sensor configured.");
   }
@@ -95,22 +96,78 @@ void setup() {
     Serial.println(F("SD begin() failed"));
     for(;;); // Fatal error, do not continue
   }
+
+  myFile.open("pulsebig.csv", FILE_WRITE);
+
+  if(myFile){
+    myFile.println("time,415,445,480,515,555,590,630,680,Clear,NIR,Heartrate,Oxygen,R,Confidence");
+  myFile.close();
 }
 
 
 void loop() {
-  myFile.open(csv_filename, FILE_WRITE);
+  // save the data THANKS GEORGE FOR FILENAMING
+  // find an unused file name
+  // I'll use this flag in the loop searching for the first unused filename.
+  bool have_a_name = false;
 
-  timer = micros();
+  // start at 0, and loop up to 1000.
+  long index_filename;
+  long index_start = 0;
+
+  for (index_filename = index_start; index_filename <= 1000; index_filename++) 
+  {
+    if (have_a_name) break;
+
+    index_next_filename = index_filename;
+
+    // Now create a filename for this value of index_next_filename,
+    // which is a global variable. name is in csv_filename.
+
+    // get the least significant hexadecimal digit:
+    long test1 = index_next_filename;
+    int digit7 = test1 % 10;
+
+    // keep going...
+    test1 = (test1 - digit7) / 10;
+    int digit6 = test1 % 10;
+
+    test1 = (test1 - digit6) / 10;
+    int digit5 = test1 % 10;
+
+    // now convert each digit to ASCII characters. Recall that
+    // the ASCII character '0' is 48, '1' is 49,... '9' is 57.
+
+    csv_filename[7] = digit7 + 48;
+    csv_filename[6] = digit6 + 48;
+    csv_filename[5] = digit5 + 48;
+
+    //////////////////////////////////////////////////////
+    // now that we've constructed a filename, see if it already exists.
+
+    if (!SD.exists(csv_filename)) {
+      have_a_name = true;
+      // Serial.println(F(">>>     file doesn't exist, so that is for us!")); 
+    } else {
+      // Serial.println(F(">>>     file exists, so keep going.")); 
+    }
+  }
+  Serial.println(csv_filename);
+  myFile.open("pulsebig.csv", FILE_WRITE);
+
   if(myFile){
-    myFile.println("415,445,480,515,555,590,630,680,Clear,NIR,Heartrate,Oxygen,R,Confidence");
-    
+    // myFile.println("time,415,445,480,515,555,590,630,680,Clear,NIR,Heartrate,Oxygen,R,Confidence");
+    as7341.setLEDCurrent(8); // mA
+    as7341.enableLED(true);
+    timer = micros();
     for (int i = 0; i<size; i++){
       if (!as7341.readAllChannels(readings)){
         Serial.println("Error reading all channels!");
         return;
       }
       body = bioHub.readBpm();
+      myFile.print(micros()-timer);
+      myFile.print(",");
       myFile.print(readings[0]);
       myFile.print(",");
       myFile.print(readings[1]);
@@ -138,16 +195,17 @@ void loop() {
       myFile.print(body.rValue);
       myFile.print(",");
       myFile.println(body.confidence);
-      Serial.println(i);
     }
+    myFile.println(micros()-timer);
+    Serial.print("time = ");
+    Serial.println(micros()-timer);
     myFile.close();
+    as7341.enableLED(false);
   }
   else{
     Serial.println("Error saving data");
   }
-
-  Serial.print("time = ");
-  Serial.println(micros()-timer);
+  
 
   Serial.print("ADC0/F1 415nm : ");
   Serial.println(readings[0]);
@@ -194,4 +252,5 @@ void loop() {
 
 
   Serial.println();
-  delay(10000);
+  delay(1000);
+}
